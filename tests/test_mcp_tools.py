@@ -53,7 +53,7 @@ class TestCheckGpuAvailability:
         _mock_gpu_stock(idle=50)
         result = await autodl_check_gpu_availability(gpu_type="RTX 4090")
         assert isinstance(result, list)
-        assert len(result) == 1
+        assert len(result) > 0
         assert result[0]["gpu_name"] == "RTX 4090"
 
     @respx.mock

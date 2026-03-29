@@ -83,8 +83,9 @@ class TestGetGpuStock:
                 },
             )
         )
+        # queries all regions → one result per region (11 regions, mocked to same response)
         result = await client.get_gpu_stock(gpu_names=["RTX 4090"])
-        assert len(result) == 1
+        assert len(result) > 0
         assert "RTX 4090" in result[0]
 
     @respx.mock

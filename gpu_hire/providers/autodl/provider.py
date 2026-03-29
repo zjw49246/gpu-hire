@@ -68,12 +68,13 @@ class AutoDLProvider:
                 for gpu_name, info in item.items():
                     if isinstance(info, dict):
                         idle = info.get("idle_gpu_num", 0)
+                        item_region = info.get("_region", region or "auto")
                         if idle > 0:
                             offers.append(
                                 GPUOffer(
                                     gpu_name=gpu_name,
                                     gpu_count=idle,
-                                    region=region or "auto",
+                                    region=item_region,
                                     price_per_hour=0.0,  # stock API doesn't return price
                                 )
                             )

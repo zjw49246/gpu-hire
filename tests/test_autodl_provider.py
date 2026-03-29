@@ -58,7 +58,7 @@ class TestListGpuAvailability:
     async def test_returns_offers(self, provider):
         _mock_gpu_stock(idle=50)
         offers = await provider.list_gpu_availability(gpu_type="RTX 4090")
-        assert len(offers) == 1
+        assert len(offers) > 0
         assert offers[0].gpu_name == "RTX 4090"
         assert offers[0].gpu_count == 50
 

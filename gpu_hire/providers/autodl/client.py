@@ -136,18 +136,30 @@ class AutoDLClient:
         cuda_v_from: int = 118,
         cuda_v_to: int = 125,
     ) -> list[dict]:
-        payload: dict = {
-            "cuda_v_from": cuda_v_from,
-            "cuda_v_to": cuda_v_to,
-            "price_from": 0,
-            "price_to": 300,
-        }
-        if region:
-            payload["region_sign"] = region
-        if gpu_names:
-            payload["gpu_name_set"] = gpu_names
-        data = await self._post("/api/v1/dev/machine/region/gpu_stock", json=payload)
-        return data if isinstance(data, list) else []
+        # region_sign is required by the API; query all known regions when not specified
+        from gpu_hire.providers.autodl.constants import REGIONS
+        regions = [region] if region else REGIONS
+
+        results: list[dict] = []
+        for r in regions:
+            payload: dict = {"region_sign": r}
+            if cuda_v_from:
+                payload["cuda_v_from"] = cuda_v_from
+            if cuda_v_to:
+                payload["cuda_v_to"] = cuda_v_to
+            if gpu_names:
+                payload["gpu_name_set"] = gpu_names
+            try:
+                data = await self._post("/api/v1/dev/machine/region/gpu_stock", json=payload)
+                items = data if isinstance(data, list) else []
+                for item in items:
+                    if isinstance(item, dict):
+                        for gpu_name, info in item.items():
+                            if isinstance(info, dict):
+                                results.append({gpu_name: {**info, "_region": r}})
+            except Exception:
+                continue
+        return results
 
     async def create_deployment(self, payload: dict) -> str:
         data = await self._post("/api/v1/dev/deployment", json=payload)

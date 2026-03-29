@@ -31,6 +31,8 @@ class Job(BaseModel):
     created_at: datetime
     finished_at: datetime | None = None
     cost_cny: float | None = None
+    ssh_command: str | None = None   # e.g. "ssh -p 12345 root@connect.westd.seetacloud.com"
+    ssh_password: str | None = None
 
 
 class Instance(BaseModel):

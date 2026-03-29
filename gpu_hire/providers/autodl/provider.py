@@ -178,6 +178,8 @@ class AutoDLProvider:
             gpu_count=gpu_count,
             cmd=cmd,
             created_at=created_at,
+            ssh_command=f"ssh -p {port} root@{host}",
+            ssh_password=password,
         )
 
     # ------------------------------------------------------------------ #

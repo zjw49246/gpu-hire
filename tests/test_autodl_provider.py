@@ -89,6 +89,10 @@ class TestSubmitJob:
     @respx.mock
     async def test_submit_job_creates_instance(self, provider):
         _mock_balance()
+        # list_instances (concurrent guard) → empty
+        respx.post("https://api.autodl.com/api/v1/dev/instance/pro/list").mock(
+            return_value=httpx.Response(200, json={"code": "Success", "data": {"list": []}})
+        )
         # create_instance
         respx.post("https://api.autodl.com/api/v1/dev/instance/pro/create").mock(
             return_value=httpx.Response(
@@ -128,6 +132,29 @@ class TestSubmitJob:
         assert job.job_id == "pro-test123"
         assert job.status == JobStatus.RUNNING
         assert job.gpu_type == "RTX 3090"
+        assert job.ssh_command == "ssh -p 12345 root@connect.test.seetacloud.com"
+        assert job.ssh_password == "testpass"
+
+    @respx.mock
+    async def test_concurrent_guard_blocks(self, provider):
+        _mock_balance()
+        # list_instances returns 3 running instances
+        respx.post("https://api.autodl.com/api/v1/dev/instance/pro/list").mock(
+            return_value=httpx.Response(200, json={"code": "Success", "data": {
+                "list": [
+                    {"uuid": "pro-1", "status": "running"},
+                    {"uuid": "pro-2", "status": "running"},
+                    {"uuid": "pro-3", "status": "running"},
+                ]
+            }})
+        )
+        with pytest.raises(RuntimeError, match="Already 3 active instance"):
+            await provider.submit_job(
+                cmd="python train.py",
+                gpu_type="RTX 3090",
+                image="pytorch-cuda11.8",
+                max_concurrent=3,
+            )
 
 
 @pytest.mark.asyncio

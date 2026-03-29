@@ -118,7 +118,17 @@ class AutoDLProvider:
         cuda_v_from: int = 118,
         regions: list[str] | None = None,
         env_vars: dict[str, str] | None = None,
+        max_concurrent: int = 3,
     ) -> Job:
+        # 0. Guard: check concurrent instance count
+        active = await self.client.list_instances()
+        if len(active) >= max_concurrent:
+            ids = [i.get("uuid", i.get("instance_uuid", "?")) for i in active]
+            raise RuntimeError(
+                f"Already {len(active)} active instance(s): {ids}. "
+                f"Stop them first or raise max_concurrent (current limit: {max_concurrent})."
+            )
+
         # 1. Check balance
         balance_data = await self.client.get_balance()
         available = balance_data.get("assets", 0) / 1000

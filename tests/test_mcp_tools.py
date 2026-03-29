@@ -66,6 +66,9 @@ class TestSubmitJob:
     @respx.mock
     async def test_returns_job_dict(self):
         _mock_balance()
+        respx.post("https://api.autodl.com/api/v1/dev/instance/pro/list").mock(
+            return_value=httpx.Response(200, json={"code": "Success", "data": {"list": []}})
+        )
         respx.post("https://api.autodl.com/api/v1/dev/instance/pro/create").mock(
             return_value=httpx.Response(200, json={"code": "Success", "data": "pro-mcp-test"})
         )

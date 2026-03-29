@@ -62,6 +62,7 @@ async def autodl_submit_job(
     gpu_count: int = 1,
     regions: list[str] | None = None,
     env_vars: dict[str, str] | None = None,
+    max_concurrent: int = 3,
 ) -> dict:
     """Submit a GPU job on AutoDL via Container Instance Pro.
 
@@ -69,6 +70,9 @@ async def autodl_submit_job(
     the command in the background. Returns immediately with job_id.
     Poll autodl_get_job_status to track progress.
     Instance is automatically released when the job finishes.
+
+    Raises an error if active instances >= max_concurrent to prevent accidental
+    runaway billing.
 
     WARNING: Incurs cost. RTX 3090 ≈ 1.87 CNY/hr.
 
@@ -82,6 +86,7 @@ async def autodl_submit_job(
         gpu_count: Number of GPUs (default 1).
         regions: Preferred region codes. Omit for auto-selection.
         env_vars: Environment variables injected into the job.
+        max_concurrent: Max allowed active instances before rejecting (default 3).
     """
     provider = _get_provider()
     job = await provider.submit_job(
@@ -91,6 +96,7 @@ async def autodl_submit_job(
         gpu_count=gpu_count,
         regions=regions,
         env_vars=env_vars,
+        max_concurrent=max_concurrent,
     )
     return job.model_dump(mode="json")
 

@@ -12,7 +12,9 @@ mcp = FastMCP(
     "gpu-hire",
     instructions=(
         "GPU rental automation for AutoDL. "
-        "Use autodl_check_balance and autodl_check_gpu_availability before submitting jobs. "
+        "Typical workflow: check_balance → check_gpu_availability → submit_job → "
+        "poll get_job_status until succeeded/failed. "
+        "get_job_log lets you inspect output while the job is running. "
         "All costs are in CNY (Chinese Yuan)."
     ),
 )
@@ -38,13 +40,13 @@ async def autodl_check_gpu_availability(
     gpu_type: str | None = None,
     region: str | None = None,
 ) -> list[dict]:
-    """Query AutoDL GPU stock and prices across regions.
+    """Query AutoDL GPU stock across regions.
 
-    Returns available GPUs with gpu_name (use this value for autodl_submit_job).
-    Call before submitting jobs to confirm availability, or to compare GPU options.
+    Returns available GPUs. Use the gpu_name value for autodl_submit_job.
+    Call before submitting jobs to confirm availability.
 
     Args:
-        gpu_type: GPU model name (e.g. "RTX 4090"). Omit to list all models.
+        gpu_type: GPU model (e.g. "RTX 4090"). Omit to list all.
         region: Region code (e.g. "westDC2"). Omit to query all regions.
     """
     provider = _get_provider()
@@ -61,23 +63,25 @@ async def autodl_submit_job(
     regions: list[str] | None = None,
     env_vars: dict[str, str] | None = None,
 ) -> dict:
-    """Submit a GPU batch job on AutoDL (Elastic Deployment Job mode).
+    """Submit a GPU job on AutoDL via Container Instance Pro.
 
-    The job runs to completion and releases resources automatically.
-    Billed per second of actual runtime.
+    Creates an instance, waits for it to start (~1 min), SSHs in and runs
+    the command in the background. Returns immediately with job_id.
+    Poll autodl_get_job_status to track progress.
+    Instance is automatically released when the job finishes.
 
-    Good for: training, evaluation, batch inference (non-interactive tasks).
-    Not for: JupyterLab or interactive debugging.
+    WARNING: Incurs cost. RTX 3090 ≈ 1.87 CNY/hr.
 
-    WARNING: This incurs costs. RTX 4090 is ~1.98 CNY/hour.
+    Supported gpu_type values: RTX 3090, RTX 4090, RTX 5090, RTX PRO 6000,
+    RTX 4080S, H800, vGPU-32GB, vGPU-48GB, vGPU-48GB-350W.
 
     Args:
-        cmd: Command to run, e.g. "python train.py --epochs 10".
-        gpu_type: GPU model — must be a gpu_name from autodl_check_gpu_availability.
+        cmd: Shell command to run, e.g. "python train.py --epochs 10".
+        gpu_type: GPU model name (see supported values above).
         image: Image alias (e.g. "pytorch-cuda11.8") or image UUID.
         gpu_count: Number of GPUs (default 1).
-        regions: Preferred regions. Omit for auto-selection.
-        env_vars: Environment variables injected securely into the job.
+        regions: Preferred region codes. Omit for auto-selection.
+        env_vars: Environment variables injected into the job.
     """
     provider = _get_provider()
     job = await provider.submit_job(
@@ -95,7 +99,7 @@ async def autodl_submit_job(
 async def autodl_get_job_status(job_id: str) -> dict:
     """Check the current status of an AutoDL job.
 
-    For completed jobs, also returns duration and cost.
+    Automatically releases the instance (stops billing) when the job succeeds or fails.
 
     Args:
         job_id: The job_id returned by autodl_submit_job.
@@ -106,10 +110,38 @@ async def autodl_get_job_status(job_id: str) -> dict:
 
 
 @mcp.tool()
-async def autodl_list_instances() -> list[dict]:
-    """List all active AutoDL instances and deployments (resources currently billing).
+async def autodl_get_job_log(job_id: str, lines: int = 50) -> str:
+    """Fetch the last N lines of a running job's output log.
 
-    Use this to check for forgotten instances that are still incurring costs.
+    Useful for checking training progress without waiting for completion.
+
+    Args:
+        job_id: The job_id returned by autodl_submit_job.
+        lines: Number of log lines to return (default 50).
+    """
+    provider = _get_provider()
+    return await provider.get_job_log(job_id, lines=lines)
+
+
+@mcp.tool()
+async def autodl_stop_job(job_id: str) -> dict:
+    """Force-stop a running AutoDL job and release the instance.
+
+    Use this to stop a job early and avoid further billing.
+
+    Args:
+        job_id: The job_id returned by autodl_submit_job.
+    """
+    provider = _get_provider()
+    await provider.stop_job(job_id)
+    return {"job_id": job_id, "status": "stopped"}
+
+
+@mcp.tool()
+async def autodl_list_instances() -> list[dict]:
+    """List all active AutoDL instances (resources currently billing).
+
+    Use this to check for forgotten instances to avoid unexpected charges.
     """
     provider = _get_provider()
     return await provider.list_active_instances()
@@ -117,9 +149,9 @@ async def autodl_list_instances() -> list[dict]:
 
 @mcp.tool()
 async def autodl_check_balance() -> dict:
-    """Check AutoDL account balance. Call before submitting jobs to confirm sufficient funds.
+    """Check AutoDL account balance in CNY. Call before submitting jobs.
 
-    Returns balance in CNY (Chinese Yuan).
+    Returns available balance and voucher balance.
     """
     provider = _get_provider()
     balance = await provider.get_balance()

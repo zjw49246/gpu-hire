@@ -204,15 +204,17 @@ class AutoDLClient:
     # --- Instance Pro (Phase 2 stubs) ---
 
     async def create_instance(self, payload: dict) -> str:
+        # API returns instance_uuid as a plain string in data, not a dict
         data = await self._post("/api/v1/dev/instance/pro/create", json=payload)
-        return data.get("instance_uuid", "")
+        return data if isinstance(data, str) else data.get("instance_uuid", "")
 
     async def get_instance_status(self, instance_uuid: str) -> str:
+        # API returns status as a plain string in data, e.g. "running"
         data = await self._get(
             "/api/v1/dev/instance/pro/status",
             params={"instance_uuid": instance_uuid},
         )
-        return data.get("status", "unknown") if isinstance(data, dict) else str(data)
+        return data if isinstance(data, str) else data.get("status", "unknown")
 
     async def get_instance_snapshot(self, instance_uuid: str) -> dict:
         return await self._get(

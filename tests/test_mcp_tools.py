@@ -16,6 +16,7 @@ from gpu_hire.mcp.server import (
     autodl_stop_job,
     autodl_list_instances,
     autodl_check_balance,
+    autodl_get_billing_history,
 )
 import gpu_hire.mcp.server as server_module
 
@@ -161,3 +162,38 @@ class TestCheckBalance:
         _mock_balance(assets=23500)
         result = await autodl_check_balance()
         assert result["available_cny"] == 23.5
+
+
+@pytest.mark.asyncio
+class TestGetBillingHistory:
+    @respx.mock
+    async def test_returns_list(self):
+        respx.post("https://www.autodl.com/api/v1/bill/list").mock(
+            return_value=httpx.Response(200, json={
+                "code": "Success",
+                "data": {
+                    "list": [
+                        {
+                            "product_uuid": "pro-abc123",
+                            "bill_sub_type": "system_disk_settle",
+                            "asset": 100,
+                            "balance": 47820,
+                            "details": {
+                                "charge_from": "2026-03-29 21:40:56",
+                                "charge_to": "2026-03-29 21:53:51",
+                                "region_name": "西北B区",
+                            },
+                            "confirm_at": "2026-03-30T00:01:19+08:00",
+                        }
+                    ],
+                    "result_total": 1,
+                }
+            })
+        )
+        result = await autodl_get_billing_history()
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0]["instance_id"] == "pro-abc123"
+        assert result[0]["bill_type"] == "system_disk_settle"
+        assert result[0]["amount_cny"] == 0.1
+        assert result[0]["balance_cny"] == 47.82

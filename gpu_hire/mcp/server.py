@@ -164,6 +164,22 @@ async def autodl_check_balance() -> dict:
     return balance.model_dump()
 
 
+@mcp.tool()
+async def autodl_get_billing_history(page: int = 1, size: int = 20) -> list[dict]:
+    """Fetch recent AutoDL billing records.
+
+    Shows charges per instance including system disk settlements
+    (system_disk_settle) and compute time (charge_settle_pro, charge_shutdown_pro).
+    System disk fees are settled at midnight each day.
+
+    Args:
+        page: Page number (default 1).
+        size: Records per page (default 20, max 50).
+    """
+    provider = _get_provider()
+    return await provider.get_billing_history(page=page, size=size)
+
+
 def main():
     mcp.run(transport="stdio")
 

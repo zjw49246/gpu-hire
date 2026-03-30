@@ -246,3 +246,36 @@ class TestGetBalance:
         _mock_balance(assets=23500)
         balance = await provider.get_balance()
         assert balance.available_cny == 23.5
+
+
+@pytest.mark.asyncio
+class TestGetBillingHistory:
+    @respx.mock
+    async def test_returns_records(self, provider):
+        respx.post("https://www.autodl.com/api/v1/bill/list").mock(
+            return_value=httpx.Response(200, json={
+                "code": "Success",
+                "data": {
+                    "list": [
+                        {
+                            "product_uuid": "pro-abc123",
+                            "bill_sub_type": "system_disk_settle",
+                            "asset": 100,
+                            "balance": 47820,
+                            "details": {
+                                "charge_from": "2026-03-29 21:40:56",
+                                "charge_to": "2026-03-29 21:53:51",
+                                "region_name": "西北B区",
+                            },
+                            "confirm_at": "2026-03-30T00:01:19+08:00",
+                        }
+                    ],
+                    "result_total": 1,
+                }
+            })
+        )
+        records = await provider.get_billing_history()
+        assert len(records) == 1
+        assert records[0]["instance_id"] == "pro-abc123"
+        assert records[0]["amount_cny"] == 0.1
+        assert records[0]["bill_type"] == "system_disk_settle"

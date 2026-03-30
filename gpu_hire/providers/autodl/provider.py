@@ -325,3 +325,26 @@ class AutoDLProvider:
         port = snapshot.get("ssh_port", 22)
         password = snapshot.get("root_password", "")
         return await get_log_tail(host, port, password, lines)
+
+    # ------------------------------------------------------------------ #
+    # Billing history                                                      #
+    # ------------------------------------------------------------------ #
+
+    async def get_billing_history(self, page: int = 1, size: int = 20) -> list[dict]:
+        """Return recent billing records with human-readable fields."""
+        raw = await self.client.get_billing_history(page=page, size=size)
+        records = raw.get("list", [])
+        result = []
+        for r in records:
+            details = r.get("details", {})
+            result.append({
+                "instance_id": r.get("product_uuid", ""),
+                "bill_type": r.get("bill_sub_type", r.get("bill_type", "")),
+                "amount_cny": r.get("asset", 0) / 1000,
+                "balance_cny": r.get("balance", 0) / 1000,
+                "charge_from": details.get("charge_from", ""),
+                "charge_to": details.get("charge_to", ""),
+                "region": details.get("region_name", details.get("region_sign", "")),
+                "confirm_at": r.get("confirm_at", ""),
+            })
+        return result

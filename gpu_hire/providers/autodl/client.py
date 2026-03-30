@@ -246,3 +246,14 @@ class AutoDLClient:
             "/api/v1/dev/instance/pro/release",
             json={"instance_uuid": instance_uuid},
         )
+
+    # --- Billing (legacy API, same auth token) ---
+
+    async def get_billing_history(self, page: int = 1, size: int = 20) -> dict:
+        """Fetch billing records from the legacy API (settles at midnight each day)."""
+        data = await self._request(
+            "POST",
+            f"{self.LEGACY_URL}/api/v1/bill/list",
+            json={"page_index": page, "page_size": size},
+        )
+        return data if isinstance(data, dict) else {"list": data, "result_total": len(data)}

@@ -106,6 +106,88 @@ class AutoDLProvider:
         return offers
 
     # ------------------------------------------------------------------ #
+    # Instance rental (no job)                                           #
+    # ------------------------------------------------------------------ #
+
+    async def rent_instance(
+        self,
+        gpu_type: str,
+        image: str,
+        gpu_count: int = 1,
+        cuda_v_from: int = 118,
+        regions: list[str] | None = None,
+        max_concurrent: int = 3,
+    ) -> Job:
+        """Create an instance and wait for it to start, but do NOT start a job.
+
+        Returns a Job with SSH credentials so the caller can SSH in and
+        set up the environment manually before running anything.
+        """
+        # 0. Guard: check concurrent instance count
+        active = await self.client.list_instances()
+        if len(active) >= max_concurrent:
+            ids = [i.get("uuid", i.get("instance_uuid", "?")) for i in active]
+            raise RuntimeError(
+                f"Already {len(active)} active instance(s): {ids}. "
+                f"Stop them first or raise max_concurrent (current limit: {max_concurrent})."
+            )
+
+        # 1. Check balance
+        balance_data = await self.client.get_balance()
+        available = balance_data.get("assets", 0) / 1000
+        if available < 5:
+            logger.warning("Low balance: %.2f CNY", available)
+
+        # 2. Resolve spec UUID and image UUID
+        gpu_spec_uuid = resolve_gpu_spec_uuid(gpu_type)
+        image_uuid = resolve_image_uuid(image)
+
+        # 3. Create instance
+        payload: dict = {
+            "req_gpu_amount": gpu_count,
+            "gpu_spec_uuid": gpu_spec_uuid,
+            "image_uuid": image_uuid,
+            "cuda_v_from": cuda_v_from,
+            "expand_system_disk_by_gb": 0,
+        }
+        if regions:
+            payload["data_center_list"] = regions
+
+        instance_uuid = await self.client.create_instance(payload)
+        created_at = datetime.now(timezone.utc)
+        gpu_display = GPU_SPEC_DISPLAY.get(gpu_spec_uuid, gpu_type)
+        logger.info("Created instance %s (%s) [rent, no job]", instance_uuid, gpu_display)
+
+        # 4. Wait for "running"
+        deadline = asyncio.get_event_loop().time() + INSTANCE_START_TIMEOUT_SECONDS
+        while asyncio.get_event_loop().time() < deadline:
+            status = await self.client.get_instance_status(instance_uuid)
+            if status == "running":
+                break
+            await asyncio.sleep(5)
+        else:
+            raise InstanceStartTimeoutError(instance_uuid)
+
+        # 5. Get SSH credentials
+        snapshot = await self.client.get_instance_snapshot(instance_uuid)
+        host = snapshot.get("proxy_host", "")
+        port = snapshot.get("ssh_port", 22)
+        password = snapshot.get("root_password", "")
+
+        # No step 6: do NOT start a job via SSH — instance stays idle.
+
+        return Job(
+            job_id=instance_uuid,
+            status=JobStatus.IDLE,
+            gpu_type=gpu_display,
+            gpu_count=gpu_count,
+            cmd="",
+            created_at=created_at,
+            ssh_command=f"ssh -p {port} root@{host}",
+            ssh_password=password,
+        )
+
+    # ------------------------------------------------------------------ #
     # Job submission via Container Instance Pro + SSH                     #
     # ------------------------------------------------------------------ #
 
@@ -224,6 +306,16 @@ class AutoDLProvider:
             return Job(
                 job_id=job_id,
                 status=JobStatus.RUNNING,
+                gpu_type=snapshot.get("snapshot_gpu_alias_name", ""),
+                gpu_count=0,
+                cmd="",
+                created_at=datetime.now(timezone.utc),
+            )
+
+        if ssh_result == "idle":
+            return Job(
+                job_id=job_id,
+                status=JobStatus.IDLE,
                 gpu_type=snapshot.get("snapshot_gpu_alias_name", ""),
                 gpu_count=0,
                 cmd="",

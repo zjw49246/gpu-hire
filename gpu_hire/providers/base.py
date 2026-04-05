@@ -14,6 +14,7 @@ class GPUOffer(BaseModel):
 
 
 class JobStatus(str, Enum):
+    IDLE = "idle"          # Instance running, no job started yet
     PENDING = "pending"
     RUNNING = "running"
     SUCCEEDED = "succeeded"

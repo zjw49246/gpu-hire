@@ -22,6 +22,8 @@ if [ -f /root/gpu-hire/exit_code ]; then
     echo "done:$(cat /root/gpu-hire/exit_code)"
 elif [ -f /root/gpu-hire/pid ] && kill -0 $(cat /root/gpu-hire/pid) 2>/dev/null; then
     echo "running"
+elif [ ! -f /root/gpu-hire/pid ]; then
+    echo "idle"
 else
     echo "unknown"
 fi
@@ -53,6 +55,7 @@ async def check_job(host: str, port: int, password: str) -> tuple[str, int | Non
     Returns:
         ("running", None)          — job still running
         ("done", exit_code)        — job finished; exit_code=0 → success
+        ("idle", None)             — no job started yet (no pid file)
         ("unknown", None)          — process died without writing exit code
     """
     async with asyncssh.connect(
@@ -72,6 +75,8 @@ async def check_job(host: str, port: int, password: str) -> tuple[str, int | Non
         return "done", code
     if output == "running":
         return "running", None
+    if output == "idle":
+        return "idle", None
     return "unknown", None
 
 
